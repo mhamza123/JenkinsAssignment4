@@ -1,0 +1,65 @@
+pipeline {
+    agent any
+
+    environment {
+        NODE_CONTAINER = 'node:latest' 
+        MAVEN_CONTAINER = 'maven:latest'
+    }
+
+    stages {
+        stage('Get Build User') {
+            steps {
+                script {
+                    wrap([$class: 'BuildUser']) {
+                        env.USERNAME = env.BUILD_USER_ID
+                    }
+                }
+            }
+        }
+
+        stage('Pull Docker Images') {
+            steps {
+                script {
+                    sh "docker pull ${NODE_CONTAINER}"
+                    sh "docker pull ${MAVEN_CONTAINER}"
+                }
+            }
+        }
+
+        stage('Run Node.js Container') {
+            steps {
+                script {
+                    sh "docker run -d --name node-container ${NODE_CONTAINER} tail -f /dev/null"
+                }
+            }
+        }
+
+        stage('Run Maven Container') {
+            steps {
+                script {
+                    sh "docker run -d --name maven-container ${MAVEN_CONTAINER} tail -f /dev/null"
+                }
+            }
+        }
+
+        stage('Show Versions') {
+            steps {
+                script {
+                    def username = env.USERNAME ?: 'unknown'
+                    sh "docker exec node-container sh -c 'echo \"Node \$(node -v) by ${username}\"'"
+                    sh "docker exec node-container sh -c 'echo \"NPM \$(npm -v) by ${username}\"'"
+                    sh "docker exec maven-container sh -c 'echo \"Maven \$(mvn -v | grep \"Apache Maven\" | awk \"{print \$3}\") by ${username}\"'"
+                }
+            }
+        }
+    }
+
+    post {
+        always {
+            script {
+                sh "docker stop node-container maven-container || true"
+                sh "docker rm node-container maven-container || true"
+            }
+        }
+    }
+}
